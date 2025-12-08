@@ -2,7 +2,7 @@
 
 /**
  * 根据选择更新维度得分
- * @param {Object} choice - 选择对象 {dimension: 'EI', weight: 20, direction: 1}
+ * @param {Object} choice - 选择对象 {dimension: 'E', weight: 20} 或 {dimension: 'EI', weight: 20, direction: 1} (兼容旧格式)
  * @param {Object} userData - 用户数据对象
  */
 export function updateDimensions(choice, userData) {
@@ -10,18 +10,44 @@ export function updateDimensions(choice, userData) {
 
   const { dimension, weight, direction } = choice;
   
-  // 更新维度得分（限制在-100到100之间）
-  const oldValue = userData.dimensions[dimension];
-  const newValue = Math.max(-100, Math.min(100, oldValue + (weight * direction)));
+  // 兼容旧格式：如果是EI/SN/TF/JP格式，转换为新的8维度格式
+  let targetDimension = dimension;
+  let oppositeDimension = null;
   
-  userData.dimensions[dimension] = newValue;
+  if (dimension === 'EI') {
+    targetDimension = direction > 0 ? 'E' : 'I';
+    oppositeDimension = direction > 0 ? 'I' : 'E';
+  } else if (dimension === 'SN') {
+    targetDimension = direction > 0 ? 'S' : 'N';
+    oppositeDimension = direction > 0 ? 'N' : 'S';
+  } else if (dimension === 'TF') {
+    targetDimension = direction > 0 ? 'T' : 'F';
+    oppositeDimension = direction > 0 ? 'F' : 'T';
+  } else if (dimension === 'JP') {
+    targetDimension = direction > 0 ? 'J' : 'P';
+    oppositeDimension = direction > 0 ? 'P' : 'J';
+  }
   
-  // 检查是否跨越中轴线（0点）
-  const crossedAxis = (oldValue < 0 && newValue >= 0) || (oldValue >= 0 && newValue < 0);
+  // 更新目标维度（0-100）
+  const oldTargetValue = userData.dimensions[targetDimension] || 0;
+  const newTargetValue = Math.max(0, Math.min(100, oldTargetValue + weight));
+  userData.dimensions[targetDimension] = newTargetValue;
+  
+  // 如果是对立维度，减少对立维度的值（保持总和不超过100）
+  if (oppositeDimension) {
+    const oldOppositeValue = userData.dimensions[oppositeDimension] || 0;
+    const decreaseAmount = Math.min(weight, oldOppositeValue);
+    userData.dimensions[oppositeDimension] = Math.max(0, oldOppositeValue - decreaseAmount);
+  }
   
   // 重新计算MBTI类型
   const oldType = userData.currentMBTI;
   const newType = calculateMBTI(userData.dimensions);
+  
+  // 检查是否跨越中轴线（50点）
+  const oldTargetPercent = oldTargetValue / 100;
+  const newTargetPercent = newTargetValue / 100;
+  const crossedAxis = (oldTargetPercent < 0.5 && newTargetPercent >= 0.5) || (oldTargetPercent >= 0.5 && newTargetPercent < 0.5);
   
   if (newType !== oldType) {
     // 类型发生变化
@@ -49,37 +75,78 @@ export function updateDimensions(choice, userData) {
 
 /**
  * 根据维度得分计算MBTI类型
+ * 8个维度：E, I, S, N, T, F, J, P，每个0-100
  */
 export function calculateMBTI(dimensions) {
   let type = '';
   
-  // E/I
-  type += dimensions.EI >= 0 ? 'E' : 'I';
-  // S/N
-  type += dimensions.SN >= 0 ? 'S' : 'N';
-  // T/F
-  type += dimensions.TF >= 0 ? 'T' : 'F';
-  // J/P
-  type += dimensions.JP >= 0 ? 'J' : 'P';
+  // E/I: 比较E和I的得分
+  const eScore = dimensions.E || 0;
+  const iScore = dimensions.I || 0;
+  type += eScore > iScore ? 'E' : 'I';
+  
+  // S/N: 比较S和N的得分
+  const sScore = dimensions.S || 0;
+  const nScore = dimensions.N || 0;
+  type += sScore > nScore ? 'S' : 'N';
+  
+  // T/F: 比较T和F的得分
+  const tScore = dimensions.T || 0;
+  const fScore = dimensions.F || 0;
+  type += tScore > fScore ? 'T' : 'F';
+  
+  // J/P: 比较J和P的得分
+  const jScore = dimensions.J || 0;
+  const pScore = dimensions.P || 0;
+  type += jScore > pScore ? 'J' : 'P';
   
   return type;
 }
 
 /**
  * 根据初始MBTI类型获取初始维度值
+ * 8个维度，每个0-100，初始值设为50（中间值）
  */
 export function getInitialDimensions(mbti) {
-  const dims = { EI: 0, SN: 0, TF: 0, JP: 0 };
+  const dims = { E: 50, I: 50, S: 50, N: 50, T: 50, F: 50, J: 50, P: 50 };
   const type = mbti.toUpperCase();
   
+  // 根据MBTI类型设置初始值
   // E/I
-  dims.EI = type[0] === 'E' ? 50 : -50;
+  if (type[0] === 'E') {
+    dims.E = 80;
+    dims.I = 20;
+  } else {
+    dims.E = 20;
+    dims.I = 80;
+  }
+  
   // S/N
-  dims.SN = type[1] === 'S' ? 50 : -50;
+  if (type[1] === 'S') {
+    dims.S = 80;
+    dims.N = 20;
+  } else {
+    dims.S = 20;
+    dims.N = 80;
+  }
+  
   // T/F
-  dims.TF = type[2] === 'T' ? 50 : -50;
+  if (type[2] === 'T') {
+    dims.T = 80;
+    dims.F = 20;
+  } else {
+    dims.T = 20;
+    dims.F = 80;
+  }
+  
   // J/P
-  dims.JP = type[3] === 'P' ? 50 : -50;
+  if (type[3] === 'J') {
+    dims.J = 80;
+    dims.P = 20;
+  } else {
+    dims.J = 20;
+    dims.P = 80;
+  }
   
   return dims;
 }
@@ -136,10 +203,14 @@ export function updateTypeDuration(userData, newType) {
  */
 export function getDimensionIcon(dimension) {
   const icons = {
-    'EI': '🔋',
-    'SN': '🧭',
-    'TF': '⚖️',
-    'JP': '🗓️'
+    'E': '🔋',
+    'I': '🔋',
+    'S': '🧭',
+    'N': '🧭',
+    'T': '⚖️',
+    'F': '⚖️',
+    'J': '🗓️',
+    'P': '🗓️'
   };
   return icons[dimension] || '📊';
 }
@@ -149,12 +220,33 @@ export function getDimensionIcon(dimension) {
  */
 export function getDimensionName(dimension) {
   const names = {
-    'EI': '外向/内向',
-    'SN': '感觉/直觉',
-    'TF': '思考/情感',
-    'JP': '判断/感知'
+    'E': '外向',
+    'I': '内向',
+    'S': '感觉',
+    'N': '直觉',
+    'T': '思考',
+    'F': '情感',
+    'J': '判断',
+    'P': '感知'
   };
   return names[dimension] || dimension;
+}
+
+/**
+ * 获取维度对信息
+ */
+export function getDimensionPair(dimension) {
+  const pairs = {
+    'E': { left: 'I', right: 'E', leftName: '内向', rightName: '外向', icon: '🔋' },
+    'I': { left: 'I', right: 'E', leftName: '内向', rightName: '外向', icon: '🔋' },
+    'S': { left: 'N', right: 'S', leftName: '直觉', rightName: '感觉', icon: '🧭' },
+    'N': { left: 'N', right: 'S', leftName: '直觉', rightName: '感觉', icon: '🧭' },
+    'T': { left: 'F', right: 'T', leftName: '情感', rightName: '思考', icon: '⚖️' },
+    'F': { left: 'F', right: 'T', leftName: '情感', rightName: '思考', icon: '⚖️' },
+    'J': { left: 'P', right: 'J', leftName: '感知', rightName: '判断', icon: '🗓️' },
+    'P': { left: 'P', right: 'J', leftName: '感知', rightName: '判断', icon: '🗓️' }
+  };
+  return pairs[dimension] || null;
 }
 
 /**
@@ -186,28 +278,32 @@ export function getMBTIDescription(type) {
  * 获取MBTI类型颜色
  */
 export function getMBTIColor(type) {
+  // 为16种MBTI类型分配更丰富的颜色，每种类型都有独特颜色
   const colors = {
-    // Analysts (NT)
-    'INTJ': '#4ECDC4',
-    'INTP': '#4ECDC4',
-    'ENTJ': '#4ECDC4',
-    'ENTP': '#4ECDC4',
-    // Diplomats (NF)
-    'INFJ': '#FF6B6B',
-    'INFP': '#FF6B6B',
-    'ENFJ': '#FF6B6B',
-    'ENFP': '#FF6B6B',
-    // Sentinels (SJ)
-    'ISTJ': '#95E1D3',
-    'ISFJ': '#95E1D3',
-    'ESTJ': '#95E1D3',
-    'ESFJ': '#95E1D3',
-    // Explorers (SP)
-    'ISTP': '#F38181',
-    'ISFP': '#F38181',
-    'ESTP': '#F38181',
-    'ESFP': '#F38181'
+    // Analysts (NT) - 紫色/蓝色系
+    'INTJ': '#6C5CE7', // 深紫色
+    'INTP': '#A29BFE', // 淡紫色
+    'ENTJ': '#5F3DC4', // 深紫蓝色
+    'ENTP': '#845EF7', // 亮紫色
+    
+    // Diplomats (NF) - 绿色/青色系
+    'INFJ': '#00B894', // 翠绿色
+    'INFP': '#00CEC9', // 青绿色
+    'ENFJ': '#00D2D3', // 青色
+    'ENFP': '#55EFC4', // 薄荷绿
+    
+    // Sentinels (SJ) - 蓝色/灰色系
+    'ISTJ': '#0984E3', // 深蓝色
+    'ISFJ': '#74B9FF', // 天蓝色
+    'ESTJ': '#2D3436', // 深灰色
+    'ESFJ': '#636E72', // 中灰色
+    
+    // Explorers (SP) - 暖色系
+    'ISTP': '#FDCB6E', // 金黄色
+    'ISFP': '#FF6B6B', // 红色
+    'ESTP': '#F39C12', // 橙色
+    'ESFP': '#FD79A8'  // 粉色
   };
-  return colors[type] || '#6C5CE7';
+  return colors[type] || '#636E72';
 }
 

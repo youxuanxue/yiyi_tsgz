@@ -144,12 +144,11 @@ const submitChallenges = () => {
     // 记录挑战
     recordChallenge(userData, challenge.id, optionIndex)
     
-    // 更新维度
-    const result = updateDimensions({
-      dimension: option.dimension,
-      weight: option.weight,
-      direction: option.direction
-    }, userData)
+      // 更新维度（新格式：直接指定维度，如 'E', 'I', 'S', 'N' 等）
+      const result = updateDimensions({
+        dimension: option.dimension,
+        weight: option.weight
+      }, userData)
     
     if (result && result.typeChanged) {
       typeChanged = true

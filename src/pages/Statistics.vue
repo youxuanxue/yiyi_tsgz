@@ -11,63 +11,20 @@
         <div class="main-type-desc">{{ weeklyStats.mainTypeDesc }}</div>
       </div>
       
-      <!-- 类型分布 -->
-      <div class="type-distribution" v-if="weeklyStats.typeDistribution">
-        <div class="distribution-title">类型分布</div>
-        <div class="distribution-list">
-          <div 
-            class="distribution-item" 
-            v-for="item in distributionList" 
-            :key="item.type"
-          >
-            <div class="distribution-type">{{ item.type }}</div>
-            <div class="distribution-bar">
-              <div 
-                class="distribution-fill" 
-                :style="{ width: item.percentage + '%', background: item.color }"
-              ></div>
-            </div>
-            <div class="distribution-percentage">{{ item.percentage }}%</div>
-          </div>
+      <!-- 性格维度柱状图 -->
+      <div class="bar-chart-section">
+        <div class="section-title">性格维度</div>
+        <div class="bar-chart">
+          <canvas ref="barChart" class="chart-canvas"></canvas>
         </div>
       </div>
     </div>
 
-    <!-- 性格趋势 -->
-    <div class="card trend-card">
-      <h2 class="section-title">性格趋势</h2>
-      <div class="trend-tabs">
-        <div 
-          v-for="tab in tabs" 
-          :key="tab.key"
-          class="trend-tab"
-          :class="{ active: currentTab === tab.key }"
-          @click="switchTab(tab.key)"
-        >
-          {{ tab.icon }} {{ tab.name }}
-        </div>
-      </div>
-      
-      <!-- 趋势图表区域 -->
-      <div class="trend-chart">
-        <canvas ref="trendChart" class="chart-canvas"></canvas>
-      </div>
-      
-      <div class="trend-info">
-        <div class="trend-current">
-          <span class="trend-label">当前值：</span>
-          <span class="trend-value" :style="{ color: currentTrendColor }">
-            {{ currentTrendValue > 0 ? '+' : '' }}{{ currentTrendValue }}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 性格雷达图 -->
-    <div class="card radar-card">
-      <h2 class="section-title">性格雷达图</h2>
-      <div class="radar-chart">
-        <canvas ref="radarChart" class="chart-canvas"></canvas>
+    <!-- 类型分布散点图 -->
+    <div class="card scatter-card">
+      <h2 class="section-title">类型分布</h2>
+      <div class="scatter-chart" v-if="weeklyStats.typeDistribution">
+        <canvas ref="scatterChart" class="chart-canvas"></canvas>
       </div>
     </div>
 
@@ -81,38 +38,27 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useUserData } from '../composables/useUserData'
-import { getMBTIDescription, getMBTIColor } from '../utils/mbtiEngine'
+import { getMBTIDescription, getMBTIColor, calculateMBTI } from '../utils/mbtiEngine'
 
 const { getUserData, calculateWeeklyStats } = useUserData()
 
 const weeklyStats = ref({})
 const distributionList = ref([])
-const currentTab = ref('EI')
-const currentTrendValue = ref(0)
-const currentTrendColor = ref('#6C5CE7')
-const trendHistory = ref([])
-const trendChart = ref(null)
-const radarChart = ref(null)
+const scatterChart = ref(null)
+const barChart = ref(null)
 
-const tabs = [
-  { key: 'EI', name: 'E/I', icon: '🔋' },
-  { key: 'SN', name: 'S/N', icon: '🧭' },
-  { key: 'TF', name: 'T/F', icon: '⚖️' },
-  { key: 'JP', name: 'J/P', icon: '🗓️' }
+const dimensionPairs = [
+  { key: 'EI', name: 'E/I', icon: '🔋', left: 'I', right: 'E', leftName: '内向', rightName: '外向', color: '#6C5CE7' },
+  { key: 'SN', name: 'S/N', icon: '🧭', left: 'N', right: 'S', leftName: '直觉', rightName: '感觉', color: '#00B894' },
+  { key: 'TF', name: 'T/F', icon: '⚖️', left: 'F', right: 'T', leftName: '情感', rightName: '思考', color: '#0984E3' },
+  { key: 'JP', name: 'J/P', icon: '🗓️', left: 'P', right: 'J', leftName: '感知', rightName: '判断', color: '#FDCB6E' }
 ]
 
 onMounted(() => {
   loadStatistics()
   nextTick(() => {
-    drawTrendChart()
-    drawRadarChart()
-  })
-})
-
-watch(currentTab, () => {
-  loadTrendData()
-  nextTick(() => {
-    drawTrendChart()
+    drawScatterChart()
+    drawBarChart()
   })
 })
 
@@ -120,10 +66,16 @@ const loadStatistics = () => {
   const userData = getUserData()
   if (!userData) return
 
+  // 根据当前维度计算当前MBTI类型
+  const currentType = calculateMBTI(userData.dimensions)
+  
   // 计算每周统计
   const stats = calculateWeeklyStats(userData)
-  const mainTypeColor = getMBTIColor(stats.mainType)
-  const mainTypeDesc = getMBTIDescription(stats.mainType)
+  
+  // 使用当前维度计算出的类型作为主要类型（确保一致性）
+  const mainType = currentType || stats.mainType || userData.currentMBTI
+  const mainTypeColor = getMBTIColor(mainType)
+  const mainTypeDesc = getMBTIDescription(mainType)
 
   // 处理类型分布列表
   const distribution = Object.keys(stats.typeDistribution || {})
@@ -136,48 +88,27 @@ const loadStatistics = () => {
 
   weeklyStats.value = {
     ...stats,
+    mainType, // 使用当前维度计算出的类型
     mainTypeColor,
     mainTypeDesc
   }
   distributionList.value = distribution
-
-  // 加载趋势数据
-  loadTrendData()
 }
 
-const switchTab = (tab) => {
-  currentTab.value = tab
+// 调整颜色亮度（用于渐变效果）
+const adjustColorBrightness = (color, percent) => {
+  const num = parseInt(color.replace('#', ''), 16)
+  const r = Math.min(255, Math.max(0, (num >> 16) + percent))
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + percent))
+  const b = Math.min(255, Math.max(0, (num & 0x0000FF) + percent))
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
 }
 
-const loadTrendData = () => {
-  const userData = getUserData()
-  if (!userData) return
+// 绘制类型分布散点图
+const drawScatterChart = () => {
+  if (!scatterChart.value) return
 
-  const currentValue = userData.dimensions[currentTab.value] || 0
-  const color = currentValue >= 0 ? '#6C5CE7' : '#FF6B6B'
-
-  // 生成模拟历史数据（实际应该从typeHistory中计算）
-  const history = []
-  const now = Date.now()
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date(now - i * 24 * 60 * 60 * 1000)
-    // 这里使用当前值加上一些随机变化作为示例
-    const value = currentValue + (Math.random() - 0.5) * 20
-    history.push({
-      date: date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
-      value: Math.max(-100, Math.min(100, value))
-    })
-  }
-
-  currentTrendValue.value = Math.round(currentValue)
-  currentTrendColor.value = color
-  trendHistory.value = history
-}
-
-const drawTrendChart = () => {
-  if (!trendChart.value || trendHistory.value.length === 0) return
-
-  const canvas = trendChart.value
+  const canvas = scatterChart.value
   const ctx = canvas.getContext('2d')
   const dpr = window.devicePixelRatio || 1
   
@@ -188,168 +119,252 @@ const drawTrendChart = () => {
   
   const canvasWidth = rect.width
   const canvasHeight = rect.height
-  const padding = 40
-  const chartWidth = canvasWidth - padding * 2
-  const chartHeight = canvasHeight - padding * 2
+  const padding = { top: 20, right: 20, bottom: 20, left: 20 }
+  const chartWidth = canvasWidth - padding.left - padding.right
+  const chartHeight = canvasHeight - padding.top - padding.bottom
 
   // 清空画布
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
-  // 绘制背景网格
-  ctx.strokeStyle = '#E9ECEF'
-  ctx.lineWidth = 1
+  // 16种MBTI类型
+  const allMBTITypes = [
+    'INTJ', 'INTP', 'ENTJ', 'ENTP',
+    'INFJ', 'INFP', 'ENFJ', 'ENFP',
+    'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ',
+    'ISTP', 'ISFP', 'ESTP', 'ESFP'
+  ]
+
+  // 获取分布数据
+  const distribution = weeklyStats.value.typeDistribution || {}
   
-  // 水平线（0轴）
-  const zeroY = padding + chartHeight / 2
-  ctx.beginPath()
-  ctx.moveTo(padding, zeroY)
-  ctx.lineTo(canvasWidth - padding, zeroY)
-  ctx.stroke()
-
-  // 绘制数据点
-  const pointRadius = 6
-  const points = trendHistory.value.map((item, index) => {
-    const x = padding + (index / (trendHistory.value.length - 1)) * chartWidth
-    const y = padding + chartHeight / 2 - (item.value / 100) * (chartHeight / 2)
-    return { x, y, value: item.value }
-  })
-
-  // 绘制连线
-  ctx.strokeStyle = currentTrendColor.value
-  ctx.lineWidth = 3
-  ctx.beginPath()
-  points.forEach((point, index) => {
-    if (index === 0) {
-      ctx.moveTo(point.x, point.y)
-    } else {
-      ctx.lineTo(point.x, point.y)
-    }
-  })
-  ctx.stroke()
-
-  // 绘制数据点
-  points.forEach(point => {
+  // 计算每个类型的占比和位置
+  const maxPercentage = Math.max(...Object.values(distribution), 1)
+  const minRadius = 8 // 最小半径
+  const maxRadius = 40 // 最大半径
+  
+  // 计算散点位置（4x4网格）
+  const cols = 4
+  const rows = 4
+  const cellWidth = chartWidth / cols
+  const cellHeight = chartHeight / rows
+  
+  allMBTITypes.forEach((type, index) => {
+    const col = index % cols
+    const row = Math.floor(index / cols)
+    
+    const x = padding.left + col * cellWidth + cellWidth / 2
+    const y = padding.top + row * cellHeight + cellHeight / 2
+    
+    const percentage = distribution[type] || 0
+    const radius = percentage > 0 
+      ? minRadius + (percentage / maxPercentage) * (maxRadius - minRadius)
+      : minRadius
+    
+    const color = getMBTIColor(type)
+    
+    // 绘制散点（使用渐变效果让颜色更丰富）
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius)
+    gradient.addColorStop(0, color)
+    gradient.addColorStop(1, adjustColorBrightness(color, -20))
+    
     ctx.beginPath()
-    ctx.arc(point.x, point.y, pointRadius, 0, 2 * Math.PI)
-    ctx.fillStyle = currentTrendColor.value
+    ctx.arc(x, y, radius, 0, 2 * Math.PI)
+    ctx.fillStyle = gradient
     ctx.fill()
     ctx.strokeStyle = '#FFFFFF'
-    ctx.lineWidth = 2
+    ctx.lineWidth = 2.5
     ctx.stroke()
-  })
-
-  // 绘制标签
-  ctx.fillStyle = '#636E72'
-  ctx.font = '12px sans-serif'
-  trendHistory.value.forEach((item, index) => {
-    const x = padding + (index / (trendHistory.value.length - 1)) * chartWidth
+    
+    // 绘制类型标签（白色，更清晰）
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = percentage > 0 ? 'bold 13px sans-serif' : '11px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(item.date, x, canvasHeight - 10)
+    ctx.textBaseline = 'middle'
+    ctx.fillText(type, x, y)
+    
+    // 绘制占比标签（如果占比大于0）
+    if (percentage > 0) {
+      ctx.fillStyle = color
+      ctx.font = 'bold 11px sans-serif'
+      ctx.textBaseline = 'top'
+      ctx.fillText(`${percentage}%`, x, y + radius + 6)
+    }
   })
 }
 
-const drawRadarChart = () => {
-  if (!radarChart.value) return
+const drawBarChart = () => {
+  if (!barChart.value) return
 
   const userData = getUserData()
   if (!userData) return
 
-  const canvas = radarChart.value
+  const canvas = barChart.value
   const ctx = canvas.getContext('2d')
   const dpr = window.devicePixelRatio || 1
   
   const rect = canvas.getBoundingClientRect()
-  const canvasSize = Math.min(rect.width, 500)
-  canvas.width = canvasSize * dpr
-  canvas.height = canvasSize * dpr
+  canvas.width = rect.width * dpr
+  canvas.height = rect.height * dpr
   ctx.scale(dpr, dpr)
   
+  const canvasWidth = rect.width
+  const canvasHeight = rect.height
+  const padding = { top: 30, right: 20, bottom: 80, left: 45 }
+  const chartWidth = canvasWidth - padding.left - padding.right
+  const chartHeight = canvasHeight - padding.top - padding.bottom
+  
   const dimensions = userData.dimensions
-  const centerX = canvasSize / 2
-  const centerY = canvasSize / 2
-  const radius = Math.min(canvasSize / 2 - 50, 180)
 
   // 清空画布
-  ctx.clearRect(0, 0, canvasSize, canvasSize)
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
-  // 绘制网格
+  // 4组维度对配置（使用统一的颜色）
+  const dimensionPairs = [
+    {
+      name: 'E/I',
+      icon: '🔋',
+      color: '#6C5CE7',
+      dim1: { key: 'E', name: '外向' },
+      dim2: { key: 'I', name: '内向' }
+    },
+    {
+      name: 'S/N',
+      icon: '🧭',
+      color: '#00B894',
+      dim1: { key: 'S', name: '感觉' },
+      dim2: { key: 'N', name: '直觉' }
+    },
+    {
+      name: 'T/F',
+      icon: '⚖️',
+      color: '#0984E3',
+      dim1: { key: 'T', name: '思考' },
+      dim2: { key: 'F', name: '情感' }
+    },
+    {
+      name: 'J/P',
+      icon: '🗓️',
+      color: '#FDCB6E',
+      dim1: { key: 'J', name: '判断' },
+      dim2: { key: 'P', name: '感知' }
+    }
+  ]
+
+  // 计算每组的位置和宽度
+  const groupCount = dimensionPairs.length
+  const groupWidth = chartWidth / groupCount
+  const barWidth = groupWidth * 0.22 // 每个柱子宽度（进一步减小）
+  const barGap = groupWidth * 0.18 // 两个柱子之间的间距（进一步增加）
+  const maxValue = 100 // 最大值
+
+  // 绘制背景网格
   ctx.strokeStyle = '#E9ECEF'
   ctx.lineWidth = 1
-  for (let i = 1; i <= 4; i++) {
-    const r = (radius / 4) * i
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartHeight / 4) * i
     ctx.beginPath()
-    ctx.arc(centerX, centerY, r, 0, 2 * Math.PI)
+    ctx.moveTo(padding.left, y)
+    ctx.lineTo(padding.left + chartWidth, y)
     ctx.stroke()
+    
+    // Y轴标签
+    if (i < 4) {
+      ctx.fillStyle = '#95A5A6'
+      ctx.font = '11px sans-serif'
+      ctx.textAlign = 'right'
+      ctx.textBaseline = 'middle'
+      ctx.fillText((100 - i * 25).toString(), padding.left - 8, y)
+    }
   }
 
-  // 绘制轴线
-  const dimKeys = ['EI', 'SN', 'TF', 'JP']
-  const angles = [Math.PI / 2, 0, -Math.PI / 2, Math.PI]
-  
-  dimKeys.forEach((key, index) => {
-    const angle = angles[index]
-    const x = centerX + Math.cos(angle) * radius
-    const y = centerY + Math.sin(angle) * radius
+  // 绘制每组维度对的柱子
+  dimensionPairs.forEach((pair, groupIndex) => {
+    const groupCenterX = padding.left + groupIndex * groupWidth + groupWidth / 2
     
-    ctx.beginPath()
-    ctx.moveTo(centerX, centerY)
-    ctx.lineTo(x, y)
-    ctx.stroke()
-
-    // 标签
-    const labelX = centerX + Math.cos(angle) * (radius + 30)
-    const labelY = centerY + Math.sin(angle) * (radius + 30)
-    ctx.fillStyle = '#636E72'
-    ctx.font = '16px sans-serif'
+    // 获取两个维度的值
+    const dim1Value = dimensions[pair.dim1.key] || 0
+    const dim2Value = dimensions[pair.dim2.key] || 0
+    
+    // 计算柱子高度
+    const dim1Height = (dim1Value / maxValue) * chartHeight
+    const dim2Height = (dim2Value / maxValue) * chartHeight
+    
+    // 柱子底部Y坐标（从下往上）
+    const baseY = padding.top + chartHeight
+    
+    // 绘制第一个柱子（dim1，左侧）- 使用组颜色
+    const dim1X = groupCenterX - barWidth / 2 - barGap / 2
+    const dim1Y = baseY - dim1Height
+    
+    ctx.fillStyle = pair.color
+    ctx.fillRect(dim1X, dim1Y, barWidth, dim1Height)
+    
+    // 绘制第一个柱子的边框
+    ctx.strokeStyle = '#FFFFFF'
+    ctx.lineWidth = 2
+    ctx.strokeRect(dim1X, dim1Y, barWidth, dim1Height)
+    
+    // 第一个柱子的数值标签（在柱子顶部上方，确保有足够空间）
+    if (dim1Height > 20) {
+      ctx.fillStyle = pair.color
+      ctx.font = 'bold 10px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText(dim1Value.toString(), dim1X + barWidth / 2, dim1Y - 10)
+    }
+    
+    // 第一个柱子的字母标签（在柱子顶部内部，根据高度调整）
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = 'bold 11px sans-serif'
+    ctx.textBaseline = 'middle'
+    const dim1LabelY = dim1Y + Math.max(12, Math.min(18, dim1Height / 2))
+    if (dim1Height > 15) {
+      ctx.fillText(pair.dim1.key, dim1X + barWidth / 2, dim1LabelY)
+    }
+    
+    // 绘制第二个柱子（dim2，右侧）- 使用组颜色
+    const dim2X = groupCenterX + barGap / 2
+    const dim2Y = baseY - dim2Height
+    
+    ctx.fillStyle = pair.color
+    ctx.fillRect(dim2X, dim2Y, barWidth, dim2Height)
+    
+    // 绘制第二个柱子的边框
+    ctx.strokeStyle = '#FFFFFF'
+    ctx.lineWidth = 2
+    ctx.strokeRect(dim2X, dim2Y, barWidth, dim2Height)
+    
+    // 第二个柱子的数值标签（在柱子顶部上方，确保有足够空间）
+    if (dim2Height > 20) {
+      ctx.fillStyle = pair.color
+      ctx.font = 'bold 10px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText(dim2Value.toString(), dim2X + barWidth / 2, dim2Y - 10)
+    }
+    
+    // 第二个柱子的字母标签（在柱子顶部内部，根据高度调整）
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = 'bold 11px sans-serif'
+    ctx.textBaseline = 'middle'
+    const dim2LabelY = dim2Y + Math.max(12, Math.min(18, dim2Height / 2))
+    if (dim2Height > 15) {
+      ctx.fillText(pair.dim2.key, dim2X + barWidth / 2, dim2LabelY)
+    }
+    
+    // 组名标签（在底部）
+    ctx.fillStyle = '#2D3436'
+    ctx.font = 'bold 11px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(key, labelX, labelY)
-  })
-
-  // 绘制数据区域
-  const points = dimKeys.map((key, index) => {
-    const value = dimensions[key] || 0
-    const normalizedValue = (value + 100) / 200 // 0-1
-    const angle = angles[index]
-    const r = radius * normalizedValue
-    return {
-      x: centerX + Math.cos(angle) * r,
-      y: centerY + Math.sin(angle) * r
-    }
-  })
-
-  // 填充区域
-  ctx.fillStyle = 'rgba(108, 92, 231, 0.3)'
-  ctx.beginPath()
-  points.forEach((point, index) => {
-    if (index === 0) {
-      ctx.moveTo(point.x, point.y)
-    } else {
-      ctx.lineTo(point.x, point.y)
-    }
-  })
-  ctx.closePath()
-  ctx.fill()
-
-  // 绘制边框
-  ctx.strokeStyle = '#6C5CE7'
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  points.forEach((point, index) => {
-    if (index === 0) {
-      ctx.moveTo(point.x, point.y)
-    } else {
-      ctx.lineTo(point.x, point.y)
-    }
-  })
-  ctx.closePath()
-  ctx.stroke()
-
-  // 绘制数据点
-  points.forEach(point => {
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, 6, 0, 2 * Math.PI)
-    ctx.fillStyle = '#6C5CE7'
-    ctx.fill()
+    ctx.textBaseline = 'top'
+    ctx.fillText(pair.icon + ' ' + pair.name, groupCenterX, baseY + 15)
+    
+    // 维度名称（在组名下方，分别显示，增加间距）
+    ctx.fillStyle = '#636E72'
+    ctx.font = '9px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(pair.dim1.name, dim1X + barWidth / 2, baseY + 35)
+    ctx.fillText(pair.dim2.name, dim2X + barWidth / 2, baseY + 35)
   })
 }
 
@@ -518,7 +533,7 @@ const copyToClipboard = (text) => {
 
 .chart-canvas {
   width: 100%;
-  height: 300px;
+  height: 350px;
   display: block;
 }
 
@@ -542,14 +557,42 @@ const copyToClipboard = (text) => {
   font-weight: 600;
 }
 
-.radar-card {
+.trend-dimensions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.trend-dim-label {
+  font-weight: 500;
+}
+
+.trend-dim-separator {
+  color: #636E72;
+  opacity: 0.5;
+}
+
+.trend-diff {
+  text-align: center;
+}
+
+.bar-chart-section {
+  margin-top: 30px;
+}
+
+.bar-chart {
+  margin: 20px 0;
+}
+
+.scatter-card {
   margin-bottom: 30px;
 }
 
-.radar-chart {
-  display: flex;
-  justify-content: center;
-  margin: 30px 0;
+.scatter-chart {
+  margin: 20px 0;
 }
 
 .share-section {

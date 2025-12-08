@@ -17,15 +17,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '我关注技术是否高效实现，逻辑是否严密。',
-          dimension: 'TF',
-          weight: 20,
-          direction: 1  // T倾向
+          dimension: 'T',  // 直接指定维度
+          weight: 20
         },
         {
           text: '我关注法案对社区和个人的影响，是否人性化。',
-          dimension: 'TF',
-          weight: 20,
-          direction: -1  // F倾向
+          dimension: 'F',  // 直接指定维度
+          weight: 20
         }
       ]
     },
@@ -36,15 +34,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '提前制定详细的旅行日程，包括每个时间点。',
-          dimension: 'JP',
-          weight: 15,
-          direction: 1  // J倾向
+          dimension: 'J',
+          weight: 15
         },
         {
           text: '只确定大方向，到时随机应变，享受未知。',
-          dimension: 'JP',
-          weight: 15,
-          direction: -1  // P倾向
+          dimension: 'P',
+          weight: 15
         }
       ]
     },
@@ -55,15 +51,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '积极参与讨论，主动分享想法，享受热闹氛围。',
-          dimension: 'EI',
-          weight: 18,
-          direction: 1  // E倾向
+          dimension: 'E',
+          weight: 18
         },
         {
           text: '安静观察，深度思考，更喜欢一对一深入交流。',
-          dimension: 'EI',
-          weight: 18,
-          direction: -1  // I倾向
+          dimension: 'I',
+          weight: 18
         }
       ]
     },
@@ -74,15 +68,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '具体的数据、经验和可验证的事实。',
-          dimension: 'SN',
-          weight: 20,
-          direction: 1  // S倾向
+          dimension: 'S',
+          weight: 20
         },
         {
           text: '直觉、可能性和未来的潜力。',
-          dimension: 'SN',
-          weight: 20,
-          direction: -1  // N倾向
+          dimension: 'N',
+          weight: 20
         }
       ]
     },
@@ -93,15 +85,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '客观分析对错，基于逻辑和原则做决定。',
-          dimension: 'TF',
-          weight: 15,
-          direction: 1  // T倾向
+          dimension: 'T',
+          weight: 15
         },
         {
           text: '考虑每个人的感受，寻求和谐与共识。',
-          dimension: 'TF',
-          weight: 15,
-          direction: -1  // F倾向
+          dimension: 'F',
+          weight: 15
         }
       ]
     },
@@ -112,15 +102,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '通过实践和动手操作来学习。',
-          dimension: 'SN',
-          weight: 18,
-          direction: 1  // S倾向
+          dimension: 'S',
+          weight: 18
         },
         {
           text: '先理解理论框架，探索概念和可能性。',
-          dimension: 'SN',
-          weight: 18,
-          direction: -1  // N倾向
+          dimension: 'N',
+          weight: 18
         }
       ]
     },
@@ -131,15 +119,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '充满能量，喜欢与多人互动交流。',
-          dimension: 'EI',
-          weight: 20,
-          direction: 1  // E倾向
+          dimension: 'E',
+          weight: 20
         },
         {
           text: '容易疲惫，更喜欢小范围深度交流。',
-          dimension: 'EI',
-          weight: 20,
-          direction: -1  // I倾向
+          dimension: 'I',
+          weight: 20
         }
       ]
     },
@@ -150,15 +136,13 @@ export function getDailyChallenges() {
       options: [
         {
           text: '制定详细计划，按步骤执行，保持有序。',
-          dimension: 'JP',
-          weight: 20,
-          direction: 1  // J倾向
+          dimension: 'J',
+          weight: 20
         },
         {
           text: '保持灵活性，根据情况调整，享受过程。',
-          dimension: 'JP',
-          weight: 20,
-          direction: -1  // P倾向
+          dimension: 'P',
+          weight: 20
         }
       ]
     }
@@ -181,10 +165,14 @@ export function getDailyChallenges() {
  */
 export function getDimensionTag(option) {
   const dimNames = {
-    'EI': option.direction > 0 ? '外向倾向' : '内向倾向',
-    'SN': option.direction > 0 ? '感觉倾向' : '直觉倾向',
-    'TF': option.direction > 0 ? '思考倾向' : '情感倾向',
-    'JP': option.direction > 0 ? '判断倾向' : '感知倾向'
+    'E': '外向倾向',
+    'I': '内向倾向',
+    'S': '感觉倾向',
+    'N': '直觉倾向',
+    'T': '思考倾向',
+    'F': '情感倾向',
+    'J': '判断倾向',
+    'P': '感知倾向'
   };
   return dimNames[option.dimension] || '';
 }
